@@ -21,7 +21,6 @@ pcap_packets_total = Gauge('pcap_packets_total', 'Total number of packets captur
 pcap_bytes_total = Gauge('pcap_bytes_total', 'Total bytes captured', ['protocol'] , registry=my_registry)
 pcap_elastic_write_total = Gauge('pcap_elastic_write_total',  'Total Elasticsearch write operations', ['status'] , registry=my_registry)
 
-
 # Packet info variables
 class packet_info:
 	def __init__(self):
@@ -34,7 +33,6 @@ class packet_info:
 		self.error_num = 0
 		# Defining the protocols that are in the elastic
 		self.protocols = []
-
 
 # Extracts metrics from elastic to prometheus format
 def process_network_data(protocols,es,error_num):
@@ -90,6 +88,7 @@ def all_pcap_files(dir_to_pcaps):
 
 
 def main():
+
 	# Prepare packets for bulk insert
 	packets = []
 	# Prepare failed packets to try again
@@ -97,6 +96,11 @@ def main():
 
 	# Iterates through the packets
 	for packet in pcap:
+		info.src_ip = None
+		info.dst_ip = None
+		info.src_port = None
+		info.dst_port = None
+		info.l4_protocol = None
 		# Create instance
 		timestemp = datetime.fromtimestamp(float(packet.time))
 		if IP in packet:
@@ -145,27 +149,34 @@ if __name__ == '__main__':
 
 	# Connection to Elasticsearch
 	es = Elasticsearch(os.getenv("ELASTIC_URL"))
-
+	#To stop the code if no pcap where 	found
+	end_code = False
 	file_path_list = os.getenv("FILE_PATH_LIST")
 	# Iterates through all pcap's from the dictionary's
-	if file_path_list != []:
+	if not all_pcap_files(file_path_list):
+		print("No pcap files found")
+		end_code = True
+
+	else:
 		for file_path in all_pcap_files(file_path_list):
-			pcap = PcapReader(rf"{file_path}")
-			main()
 
-			# Start the server on port 9100
-			start_http_server(int(os.getenv("METRICS_PORT")), registry=my_registry)
+				pcap = PcapReader(rf"{file_path}")
+				main()
 
-			# Added time to write after upload logs
-			time.sleep(20)
-			print("Elasticsearch available at http://localhost:9200")
-			print("Kibana available at http://localhost:5601")
-			print("Prometheus metrics available at http://localhost:9100/metrics")
-			print("The prometheus server with close in 5 minutes")
-			# Exports metrics
-			process_network_data(info.protocols, es, info.error_num)
-			# Keeps the prometheus server running for 5 min
-			time.sleep(300)
+	if not end_code:
+		# Start the server on port 9100
+		start_http_server(int(os.getenv("METRICS_PORT")), registry=my_registry)
+
+		# Added time to write after upload logs
+		time.sleep(20)
+		print("Elasticsearch available at http://localhost:9200")
+		print("Kibana available at http://localhost:5601")
+		print("Prometheus metrics available at http://localhost:9100/metrics")
+		print("The prometheus server with close in 5 minutes")
+		# Exports metrics
+		process_network_data(info.protocols, es, info.error_num)
+		# keeps the prometheus server running for 5 min
+		time.sleep(300)
 
 
 
