@@ -162,8 +162,9 @@ if __name__ == '__main__':
 			print("Kibana available at http://localhost:5601")
 			print("Prometheus metrics available at http://localhost:9100/metrics")
 			print("The prometheus server with close in 5 minutes")
-			# Exports metrics and keeps the prometheus server running
+			# Exports metrics
 			process_network_data(info.protocols, es, info.error_num)
+			# Keeps the prometheus server running for 5 min
 			time.sleep(300)
 
 
