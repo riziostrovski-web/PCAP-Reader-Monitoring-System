@@ -1,0 +1,58 @@
+# # PCAP Reader & Monitoring System
+
+This application processes PCAP (Packet Capture) files, indexes the packet metadata into **Elasticsearch**, and exposes network metrics via a **Prometheus** exporter. It includes a pre-configured stack with Kibana for visualization.
+
+---
+
+## How to Run the App
+
+1.  insert the pcap files that you want to add to `pcap_files` which will contain the pcap exsampels. (you can get more pcaps to try in https://apackets.com/pcaps)
+2.  **Environment Setup**: Ensure your `.env` file is configured. You can use the provided `.env.example` as a template.
+3.  **Start the Stack**:
+4.  get into the .../app file in the terminal and
+    run the following command to build and start the containers:
+    ```bash
+    docker-compose up --build
+    ```
+
+---
+
+## Environment Variables
+
+The application uses these variables defined in your `.env` file:
+
+| Variable | Description | Example Value |
+| :--- | :--- | :--- |
+| `ELASTIC_URL` | URL for the Elasticsearch instance | `http://elasticsearch:9200` |
+| `ELASTIC_INDEX` | Index pattern for packet storage | `pcap-packets-*` |
+| `METRICS_PORT` | Port for the Prometheus metrics server | `9100` |
+| `FILE_PATH_LIST` | Directory path containing your PCAP files | `./pcap_files` |
+
+---
+
+## Data Examples
+pcap files will be provided inside the pcap_files folder
+
+### Example PCAP File
+The application iterates through all files in the specified directory that end with the `.pcap` extension.
+
+### Example Elasticsearch Document
+"_index": pcap-packets-2026-02-12,
+			"_source": {
+				"timestamp": 2026-02-12 13:36:10,
+				"src_ip": 18.214.255.145,
+				"dst_ip": 81.79.119.152,
+				"src_port": 443,
+				"dst_port": info.dst_port,
+				"l4_protocol": TCP,
+				"packet_length": 80 bytes
+
+---
+
+## Monitoring /metrics
+
+The app starts a Prometheus-compatible HTTP server to export metrics using a custom registry.
+
+**How to check metrics:**
+Navigate to: `http://localhost:9100/metrics` on the browser or enter the link displayed in the terminal.
+
