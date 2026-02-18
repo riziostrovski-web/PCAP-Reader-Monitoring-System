@@ -18,7 +18,7 @@ prometheus_client.Counter._generate_created_series = False
 
 # Define the Metrics with Labels
 pcap_packets_total = Gauge('pcap_packets_total', 'Total number of packets captured', ['protocol'] , registry=my_registry)
-pcap_bytes_total = Counter('pcap_bytes_total', 'Total bytes captured', ['protocol'] , registry=my_registry)
+pcap_bytes_total = Gauge('pcap_bytes_total', 'Total bytes captured', ['protocol'] , registry=my_registry)
 pcap_elastic_write_total = Gauge('pcap_elastic_write_total',  'Total Elasticsearch write operations', ['status'] , registry=my_registry)
 
 
@@ -39,7 +39,6 @@ class packet_info:
 # Extracts metrics from elastic to prometheus format
 def process_network_data(protocols,es,error_num):
 	total_bytes = 0
-	total_packets = 0
 	res = 0
 	rel_docs = 0
 	# Counts the number of documents of each protocol
@@ -53,17 +52,17 @@ def process_network_data(protocols,es,error_num):
 		# Extracts the documents from protocol so we can extract the length of them without the "byets" part
 		rel_docs = helpers.scan(client=es, index=os.getenv("ELASTIC_INDEX"), query={
 			"query": {"match": {"l4_protocol": proto}},
-			"_source": ["packet_length"]
+			"_source": ["packet_length(bytes)"]
 		}
 						)
 		size_data = 0
 		for doc in rel_docs:
-			size_data += (doc.get('_source', {})).get('packet_length', 0)
-		pcap_bytes_total.labels(protocol=proto).inc(size_data)
+			size_data += (doc.get('_source', {})).get('packet_length(bytes)', 0)
+		pcap_bytes_total.labels(protocol=proto).set(size_data)
 		total_bytes += size_data
 	total_docs = es.count(index=os.getenv("ELASTIC_INDEX"))['count']
 	pcap_packets_total.labels("all protocols").set(total_docs)
-	pcap_bytes_total.labels("all protocols").inc(total_bytes)
+	pcap_bytes_total.labels("all protocols").set(total_bytes)
 	pcap_elastic_write_total.labels(status='success').set(total_docs)
 	pcap_elastic_write_total.labels(status='fail').set(error_num)
 
@@ -95,8 +94,7 @@ def main():
 	packets = []
 	# Prepare failed packets to try again
 	failed_packets = []
-	# Packet info variables
-	info = packet_info()
+
 	# Iterates through the packets
 	for packet in pcap:
 		# Create instance
@@ -136,7 +134,7 @@ def main():
 	# Retry + returns status and fail reason
 	for inx , (ok, result) in enumerate(streaming_bulk(es, failed_packets, raise_on_error=False)):
 		if not ok:
-			print(f"{failed_packets[inx - 1]['_index']} - status: {ok} , result: {result} \n")
+			print(f"{failed_packets[inx]['_index']} - status: {ok} , result: {result} \n")
 			# Counts the amount of packets that failed to enter elastic
 			info.error_num +=1
 
@@ -146,29 +144,27 @@ if __name__ == '__main__':
 	info = packet_info()
 
 	# Connection to Elasticsearch
-	try:
-		es = Elasticsearch(os.getenv("ELASTIC_URL"))
-
-	except:
-		es = Elasticsearch(os.getenv("ELASTIC_URL"))
+	es = Elasticsearch(os.getenv("ELASTIC_URL"))
 
 	file_path_list = os.getenv("FILE_PATH_LIST")
 	# Iterates through all pcap's from the dictionary's
-	for file_path in all_pcap_files(file_path_list):
-		pcap = PcapReader(rf"{str(file_path)}")
-		main()
+	if file_path_list != []:
+		for file_path in all_pcap_files(file_path_list):
+			pcap = PcapReader(rf"{file_path}")
+			main()
 
-	# Start the server on port 9100
-	start_http_server(int(os.getenv("METRICS_PORT")), registry=my_registry)
+			# Start the server on port 9100
+			start_http_server(int(os.getenv("METRICS_PORT")), registry=my_registry)
 
- 	#Added time to write after upload logs
-	time.sleep(20)
-	print("Elasticsearch available at http://localhost:9200")
-	print("Kibana available at http://localhost:5601")
-	print("Prometheus metrics available at http://localhost:9100/metrics")
+			# Added time to write after upload logs
+			time.sleep(20)
+			print("Elasticsearch available at http://localhost:9200")
+			print("Kibana available at http://localhost:5601")
+			print("Prometheus metrics available at http://localhost:9100/metrics")
+			print("The prometheus server with close in 5 minutes")
+			# Exports metrics and keeps the prometheus server running
+			process_network_data(info.protocols, es, info.error_num)
+			time.sleep(300)
 
-	# Exports metrics and runs the server for the output
-	while True:
-		process_network_data(info.protocols,es,info.error_num)
-		time.sleep(10)
+
 
